@@ -8,7 +8,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/ozomer/node-red-contrib-mongodb2"
+    "url": "https://github.com/hllink/node-red-contrib-mongodb4"
   },
   "author": {
     "name": "Oren Zomer",
