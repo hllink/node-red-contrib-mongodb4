@@ -19,8 +19,8 @@ module.exports = function(RED) {
   const EventEmitter = require('events').EventEmitter;
   const appEnv = require('cfenv').getAppEnv();
   const mongodb = require('mongodb');
-  const forEachIteration = new Error("node-red-contrib-mongodb3 forEach iteration");
-  const forEachEnd = new Error("node-red-contrib-mongodb3 forEach end");
+  const forEachIteration = new Error("node-red-contrib-mongodb4 forEach iteration");
+  const forEachEnd = new Error("node-red-contrib-mongodb4 forEach end");
 
   let services = [];
   Object.keys(appEnv.services).forEach(function(label) {
@@ -120,7 +120,15 @@ module.exports = function(RED) {
     return callback(null, this);
   };
 
-  RED.nodes.registerType("mongodb3", function MongoConfigNode(n) {
+  const customOperations = new Set([
+    'find.toArray', 'find.forEach', 
+    'aggregate.toArray', 'aggregate.forEach', 
+    'listIndexes.toArray', 'listIndexes.forEach',
+    'db.listCollections.toArray', 'db.listCollections.forEach',
+    'db', 'collection'
+  ].map(k => operations[k]));
+
+  RED.nodes.registerType("mongodb4", function MongoConfigNode(n) {
     RED.nodes.createNode(this, n);
     this.uri = '' + n.uri;
     if (this.credentials.user || this.credentials.password) {
@@ -147,11 +155,11 @@ module.exports = function(RED) {
     }
   });
 
-  RED.httpAdmin.get('/mongodb3/vcap', function(req, res) {
+  RED.httpAdmin.get('/mongodb4/vcap', function(req, res) {
     res.json(services);
   });
 
-  RED.httpAdmin.get('/mongodb3/operations', function(req, res) {
+  RED.httpAdmin.get('/mongodb4/operations', function(req, res) {
     res.json(Object.keys(operations).sort());
   });
 
@@ -197,7 +205,7 @@ module.exports = function(RED) {
     }
   }
 
-  RED.nodes.registerType("mongodb3 in", function MongoInputNode(n) {
+  RED.nodes.registerType("mongodb4 in", function MongoInputNode(n) {
     RED.nodes.createNode(this, n);
     this.configNode = n.configNode;
     this.collection = n.collection;
@@ -216,7 +224,7 @@ module.exports = function(RED) {
       }
     }
     if (!this.config || !this.config.uri) {
-      this.error("missing mongodb3 configuration");
+      this.error("missing mongodb4 configuration");
       return;
     }
     const node = this;
@@ -244,7 +252,7 @@ module.exports = function(RED) {
         });
       });
 
-      node.on('node-red-contrib-mongodb3 handleMessage', function(msg) {
+      node.on('node-red-contrib-mongodb4 handleMessage', function(msg) {
         // see: messageHandlingCompleted
         setImmediate(function(){
           handleMessage(msg);
@@ -320,12 +328,15 @@ module.exports = function(RED) {
                   delete response.result.connection;
                 }
               }
-							// `response` is an instance of CommandResult, and does not seem to have the standard Object methods, 
-							// which means that some props are not correctly being forwarded to msg.payload (eg "ops" ouputted from `insertOne`)
-							// cloning the object fixes that.							
-							response = Object.assign({}, response);
-							// response.message includes info about the DB op, but is large and never used (like the connection)
-							delete response.message;              
+
+              if (!customOperations.has(operation)) {
+                // `response` is an instance of CommandResult, and does not seem to have the standard Object methods, 
+							  // which means that some props are not correctly being forwarded to msg.payload (eg "ops" ouputted from `insertOne`)
+                // cloning the object fixes that.				
+                response = Object.assign({}, response);
+                // response.message includes info about the DB op, but is large and never used (like the connection)
+                delete response.message;
+              }                  
 							
               // send msg (when err == forEachEnd, this is just a forEach completion).
               if (forEachIteration == err) {
@@ -381,7 +392,7 @@ module.exports = function(RED) {
             continue;
           }
           // Handle the pending message.
-          if (!targetNode.emit('node-red-contrib-mongodb3 handleMessage', pendingMessage.msg)) {
+          if (!targetNode.emit('node-red-contrib-mongodb4 handleMessage', pendingMessage.msg)) {
             // Safety check - if emit() returned false it means there are no listeners to the event.
             // Was the target node closed?
             // This shouldn't happen normally, but if it does, we must try to handle the next message in the queue.
@@ -398,7 +409,7 @@ module.exports = function(RED) {
         }
         // The queue is empty. The number of parallel ops has reduced.
         if (client.parallelOps <= 0) {
-          return node.error("Something went wrong with node-red-contrib-mongodb3 parallel-ops count");
+          return node.error("Something went wrong with node-red-contrib-mongodb4 parallel-ops count");
         }
         client.parallelOps -= 1;
       }
@@ -435,7 +446,7 @@ module.exports = function(RED) {
       if (node.config) {
         closeClient(node.config);
       }
-      node.removeAllListeners('node-red-contrib-mongodb3 handleMessage');
+      node.removeAllListeners('node-red-contrib-mongodb4 handleMessage');
       if (debouncer) {
         clearTimeout(debouncer);
       }
