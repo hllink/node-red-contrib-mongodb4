@@ -452,4 +452,55 @@ module.exports = function(RED) {
       }
     });
   });
+
+  RED.nodes.registerType("mongodb4 connection status", function MongoStatusNode(config) {
+    RED.nodes.createNode(this, config);
+    var node = this;
+    this.configNode = RED.nodes.getNode(config.configNode);
+
+    if (!this.configNode || !this.configNode.uri) {
+      this.error("Missing mongodb4 configuration");
+      return;
+    }
+
+    node.on('input', function(msg){
+      const client = new mongodb.MongoClient(this.configNode.uri, {
+        useUnifiedTopology: true,
+        connectTimeoutMS: config.timeOutMS,
+        serverSelectionTimeoutMS: config.timeOutMS,
+      });
+    
+      function setMessage(code, message) {
+        if (!msg.payload) {
+          msg.payload = {};
+        };
+        
+        msg.payload = {
+          "status_code": code,
+          "status_message": message
+        }
+      };
+      
+      async function run() {
+        try {
+          // Connect the client to the server
+          await client.connect();
+          // Establish and verify connection
+          await client.db("admin").command({ ping: 1 });
+          node.status({fill:"green",shape:"dot",text:"Success"});
+          setMessage("Success", "Connection test succeeded!")
+              node.send(msg);
+          } finally {
+              // Ensures that the client will close when you finish/error
+              await client.close();
+          }
+      }
+
+      run().catch(function (err) {
+        node.status({fill:"red",shape:"ring",text:"Fail"});
+        setMessage("Fail", err)
+        node.send(msg)
+      });
+     })
+  });
 };
